@@ -1,0 +1,214 @@
+// src/pages/Index.jsx
+import React, { useState, useEffect } from "react";
+import { Box, Flex, Heading, Input, Button, Text, Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter, ModalBody, ModalCloseButton, useDisclosure } from "@chakra-ui/react";
+import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
+
+const Index = () => {
+  const [events, setEvents] = useState([]);
+  const [newEvent, setNewEvent] = useState({ name: "", description: "" });
+  const [editEvent, setEditEvent] = useState(null);
+  const [user, setUser] = useState(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  useEffect(() => {
+    // Check if user is logged in
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+      fetchEvents();
+    }
+  }, []);
+
+  const fetchEvents = async () => {
+    try {
+      const response = await fetch("http://localhost:1337/api/events");
+      const data = await response.json();
+      setEvents(data.data);
+    } catch (error) {
+      console.error("Error fetching events:", error);
+    }
+  };
+
+  const handleRegister = async () => {
+    try {
+      const response = await fetch("http://localhost:1337/api/auth/local/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          email: username,
+          password,
+        }),
+      });
+      const data = await response.json();
+      setUser(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      fetchEvents();
+    } catch (error) {
+      console.error("Error registering user:", error);
+    }
+  };
+
+  const handleLogin = async () => {
+    try {
+      const response = await fetch("http://localhost:1337/api/auth/local", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          identifier: username,
+          password,
+        }),
+      });
+      const data = await response.json();
+      setUser(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      fetchEvents();
+    } catch (error) {
+      console.error("Error logging in:", error);
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem("user");
+  };
+
+  const handleCreateEvent = async () => {
+    try {
+      const response = await fetch("http://localhost:1337/api/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user.jwt}`,
+        },
+        body: JSON.stringify({
+          data: newEvent,
+        }),
+      });
+      const data = await response.json();
+      setEvents([...events, data.data]);
+      setNewEvent({ name: "", description: "" });
+    } catch (error) {
+      console.error("Error creating event:", error);
+    }
+  };
+
+  const handleEditEvent = async (event) => {
+    setEditEvent(event);
+    onOpen();
+  };
+
+  const handleUpdateEvent = async () => {
+    try {
+      const response = await fetch(`http://localhost:1337/api/events/${editEvent.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${user.jwt}`,
+        },
+        body: JSON.stringify({
+          data: editEvent,
+        }),
+      });
+      const data = await response.json();
+      const updatedEvents = events.map((event) => (event.id === data.data.id ? data.data : event));
+      setEvents(updatedEvents);
+      setEditEvent(null);
+      onClose();
+    } catch (error) {
+      console.error("Error updating event:", error);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId) => {
+    try {
+      await fetch(`http://localhost:1337/api/events/${eventId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${user.jwt}`,
+        },
+      });
+      setEvents(events.filter((event) => event.id !== eventId));
+    } catch (error) {
+      console.error("Error deleting event:", error);
+    }
+  };
+
+  return (
+    <Box>
+      {!user ? (
+        <Flex direction="column" align="center" justify="center" h="100vh">
+          <Heading mb={4}>Event Management App</Heading>
+          <Input placeholder="Username" mb={2} value={username} onChange={(e) => setUsername(e.target.value)} />
+          <Input type="password" placeholder="Password" mb={4} value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Button colorScheme="blue" mr={2} onClick={handleLogin}>
+            Login
+          </Button>
+          <Button colorScheme="blue" onClick={handleRegister}>
+            Register
+          </Button>
+        </Flex>
+      ) : (
+        <Box>
+          <Flex justify="space-between" align="center" p={4}>
+            <Heading>Events</Heading>
+            <Button colorScheme="blue" onClick={onOpen}>
+              <FaPlus />
+              Create Event
+            </Button>
+          </Flex>
+          <Box p={4}>
+            {events.map((event) => (
+              <Flex key={event.id} justify="space-between" align="center" p={4} borderWidth={1} borderRadius={8} mb={4}>
+                <Box>
+                  <Heading size="md">{event.attributes.name}</Heading>
+                  <Text>{event.attributes.description}</Text>
+                </Box>
+                <Flex>
+                  <Button colorScheme="yellow" mr={2} onClick={() => handleEditEvent(event)}>
+                    <FaEdit />
+                  </Button>
+                  <Button colorScheme="red" onClick={() => handleDeleteEvent(event.id)}>
+                    <FaTrash />
+                  </Button>
+                </Flex>
+              </Flex>
+            ))}
+          </Box>
+          <Modal isOpen={isOpen} onClose={onClose}>
+            <ModalOverlay />
+            <ModalContent>
+              <ModalHeader>{editEvent ? "Edit Event" : "Create Event"}</ModalHeader>
+              <ModalCloseButton />
+              <ModalBody>
+                <Input placeholder="Event Name" mb={4} value={editEvent?.attributes.name || newEvent.name} onChange={(e) => (editEvent ? setEditEvent({ ...editEvent, attributes: { ...editEvent.attributes, name: e.target.value } }) : setNewEvent({ ...newEvent, name: e.target.value }))} />
+                <Input placeholder="Event Description" mb={4} value={editEvent?.attributes.description || newEvent.description} onChange={(e) => (editEvent ? setEditEvent({ ...editEvent, attributes: { ...editEvent.attributes, description: e.target.value } }) : setNewEvent({ ...newEvent, description: e.target.value }))} />
+              </ModalBody>
+              <ModalFooter>
+                <Button colorScheme="blue" mr={3} onClick={editEvent ? handleUpdateEvent : handleCreateEvent}>
+                  Save
+                </Button>
+                <Button variant="ghost" onClick={onClose}>
+                  Cancel
+                </Button>
+              </ModalFooter>
+            </ModalContent>
+          </Modal>
+          <Flex justify="flex-end" p={4}>
+            <Button colorScheme="red" onClick={handleLogout}>
+              Logout
+            </Button>
+          </Flex>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+export default Index;
